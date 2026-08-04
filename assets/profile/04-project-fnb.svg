@@ -18,7 +18,7 @@
   <rect x="1" y="1" width="998" height="338" rx="14" fill="#0D1117" stroke="#30363D"/>
 
   <!-- header -->
-  <text x="32" y="40" font-size="12" fill="#8B949E" letter-spacing="2" class="fade d1">// SYSTEM.01 — PRIVATE / NDA</text>
+  <text x="32" y="40" font-size="12" fill="#8B949E" letter-spacing="2" class="fade d1">FEATURED PROJECT · PRIVATE REPOSITORY</text>
   <g class="fade d1">
     <rect x="806" y="24" width="162" height="24" rx="12" fill="#161B22" stroke="#30363D"/>
     <circle cx="822" cy="36" r="4" fill="#D29922" class="pulse"/>

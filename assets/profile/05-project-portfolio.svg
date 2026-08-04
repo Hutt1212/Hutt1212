@@ -15,7 +15,7 @@
 
   <rect x="1" y="1" width="998" height="298" rx="14" fill="#0D1117" stroke="#30363D"/>
 
-  <text x="32" y="40" font-size="12" fill="#8B949E" letter-spacing="2" class="fade d1">// SYSTEM.02 — LIVE</text>
+  <text x="32" y="40" font-size="12" fill="#8B949E" letter-spacing="2" class="fade d1">FEATURED PROJECT · LIVE</text>
   <g class="fade d1">
     <rect x="868" y="24" width="100" height="24" rx="12" fill="#161B22" stroke="#238636"/>
     <circle cx="884" cy="36" r="4" fill="#3FB950"/>

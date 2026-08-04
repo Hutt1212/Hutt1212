@@ -18,7 +18,7 @@
   <rect x="1" y="1" width="998" height="298" rx="14" fill="#0D1117" stroke="#30363D"/>
 
   <!-- header strip -->
-  <text x="32" y="42" font-size="13" fill="#8B949E" letter-spacing="2" class="fade d1">// PROFILE.DOSSIER</text>
+  <text x="32" y="42" font-size="13" fill="#8B949E" letter-spacing="2" class="fade d1">ABOUT ME</text>
   <g class="fade d1">
     <circle cx="770" cy="37" r="5" fill="#3FB950" class="pulse"/>
     <text x="784" y="42" font-size="12" fill="#3FB950" letter-spacing="1">OPEN TO OPPORTUNITIES</text>
@@ -36,7 +36,7 @@
   <text x="32" y="214" font-size="13.5" fill="#8B949E" class="fade d4">realtime pipelines, and interfaces that feel effortless.</text>
 
   <g class="fade d5">
-    <text x="32" y="262" font-size="12" fill="#8B949E" letter-spacing="1">SYS.STATUS</text>
+    <text x="32" y="262" font-size="12" fill="#8B949E" letter-spacing="1">CURRENTLY</text>
     <text x="122" y="262" font-size="12" fill="#79C0FF" letter-spacing="1">▸ SHIPPING&#8201;: web × realtime × AI</text>
   </g>
 

@@ -18,5 +18,5 @@
     <rect x="0" y="1" width="140" height="2" fill="url(#fedge)" class="beam"/>
   </g>
   <text x="500" y="56" text-anchor="middle" font-size="17" font-weight="600" fill="#F0F6FC" letter-spacing="1">"Ship fast. Stay maintainable. Deliver real value."</text>
-  <text x="500" y="88" text-anchor="middle" font-size="12" fill="#8B949E" letter-spacing="2">$ exit 0<tspan fill="#58A6FF" class="caret"> ▍</tspan></text>
+  <text x="500" y="88" text-anchor="middle" font-size="12" fill="#8B949E" letter-spacing="2">Thanks for stopping by — let's build something together.</text>
 </svg>

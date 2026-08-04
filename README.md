@@ -12,7 +12,7 @@
 
 ---
 
-## `01 / PROFILE`
+## About Me
 
 <div align="center">
   <img src="./assets/profile/01-profile-dossier.svg" width="100%" alt="Profile dossier — fullstack developer focused on web, realtime systems and applied AI" />
@@ -24,7 +24,7 @@ I build web products **end-to-end** — API design and business logic on the bac
 
 ---
 
-## `02 / FEATURED SYSTEMS`
+## Featured Projects
 
 > 🔒 **Note:** These projects are owned by companies/partners and kept in private repositories. Only the technical approach and my role are described — no confidential details.
 
@@ -73,7 +73,7 @@ I build web products **end-to-end** — API design and business logic on the bac
 
 ---
 
-## `03 / TOOLKIT`
+## Tech Stack
 
 <div align="center">
   <img src="./assets/profile/02-toolkit-matrix.svg" width="100%" alt="Toolkit matrix — frontend, backend, realtime and AI, data, devops, quality" />
@@ -81,7 +81,7 @@ I build web products **end-to-end** — API design and business logic on the bac
 
 ---
 
-## `04 / ENGINEERING PRINCIPLES`
+## How I Work
 
 <div align="center">
   <img src="./assets/profile/03-engineering-principles.svg" width="100%" alt="Engineering principles — architecture, performance, security, collaboration" />
@@ -89,7 +89,7 @@ I build web products **end-to-end** — API design and business logic on the bac
 
 ---
 
-## `05 / TELEMETRY`
+## GitHub Activity
 
 <div align="center">
 
