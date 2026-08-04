@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 250" font-family="'JetBrains Mono','Fira Code','Cascadia Code',Consolas,monospace">
+  <style>
+    .card { opacity: 0; animation: fadeUp .7s ease-out forwards; }
+    .c1 { animation-delay: .05s; } .c2 { animation-delay: .2s; }
+    .c3 { animation-delay: .35s; } .c4 { animation-delay: .5s; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .num { font-size: 22px; font-weight: 700; fill: #1F6FEB; opacity: .55; }
+    .title { font-size: 13px; font-weight: 700; fill: #F0F6FC; letter-spacing: 1.5px; }
+    .body { font-size: 11.5px; fill: #8B949E; }
+    .panel { fill: #161B22; stroke: #30363D; }
+  </style>
+
+  <rect x="1" y="1" width="998" height="248" rx="14" fill="#0D1117" stroke="#30363D"/>
+  <text x="32" y="40" font-size="13" fill="#8B949E" letter-spacing="2">// ENGINEERING.PRINCIPLES</text>
+  <line x1="32" y1="56" x2="968" y2="56" stroke="#21262D"/>
+
+  <g class="card c1">
+    <rect x="32" y="76" width="218" height="140" rx="10" class="panel"/>
+    <text x="52" y="112" class="num">01</text>
+    <text x="52" y="140" class="title">ARCHITECTURE</text>
+    <text x="52" y="166" class="body">Clear boundaries.</text>
+    <text x="52" y="184" class="body">Code that reads like</text>
+    <text x="52" y="202" class="body">documentation.</text>
+  </g>
+  <g class="card c2">
+    <rect x="272" y="76" width="218" height="140" rx="10" class="panel"/>
+    <text x="292" y="112" class="num">02</text>
+    <text x="292" y="140" class="title">PERFORMANCE</text>
+    <text x="292" y="166" class="body">Optimized end-to-end,</text>
+    <text x="292" y="184" class="body">from DB query</text>
+    <text x="292" y="202" class="body">to first paint.</text>
+  </g>
+  <g class="card c3">
+    <rect x="512" y="76" width="218" height="140" rx="10" class="panel"/>
+    <text x="532" y="112" class="num">03</text>
+    <text x="532" y="140" class="title">SECURITY</text>
+    <text x="532" y="166" class="body">OAuth2 · JWT.</text>
+    <text x="532" y="184" class="body">OWASP-aware</text>
+    <text x="532" y="202" class="body">by default.</text>
+  </g>
+  <g class="card c4">
+    <rect x="752" y="76" width="216" height="140" rx="10" class="panel"/>
+    <text x="772" y="112" class="num">04</text>
+    <text x="772" y="140" class="title">COLLABORATION</text>
+    <text x="772" y="166" class="body">Git flow, honest</text>
+    <text x="772" y="184" class="body">code reviews,</text>
+    <text x="772" y="202" class="body">CI/CD discipline.</text>
+  </g>
+</svg>
