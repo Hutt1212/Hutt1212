@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 120" font-family="'JetBrains Mono','Fira Code','Cascadia Code',Consolas,monospace">
+  <defs>
+    <linearGradient id="fedge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#58A6FF" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#58A6FF"/>
+      <stop offset="1" stop-color="#58A6FF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <style>
+    .beam { animation: sweep 6s linear infinite; }
+    .caret { animation: blink 1.05s step-end infinite; }
+    @keyframes sweep { 0% { transform: translateX(-140px); } 100% { transform: translateX(1140px); } }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+  </style>
+  <rect x="1" y="1" width="998" height="118" rx="14" fill="#0D1117" stroke="#30363D"/>
+  <clipPath id="fframe"><rect x="1" y="1" width="998" height="118" rx="14"/></clipPath>
+  <g clip-path="url(#fframe)">
+    <rect x="0" y="1" width="140" height="2" fill="url(#fedge)" class="beam"/>
+  </g>
+  <text x="500" y="56" text-anchor="middle" font-size="17" font-weight="600" fill="#F0F6FC" letter-spacing="1">"Ship fast. Stay maintainable. Deliver real value."</text>
+  <text x="500" y="88" text-anchor="middle" font-size="12" fill="#8B949E" letter-spacing="2">$ exit 0<tspan fill="#58A6FF" class="caret"> ▍</tspan></text>
+</svg>
