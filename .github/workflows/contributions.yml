@@ -1,0 +1,51 @@
+name: Refresh contributions
+
+# Redraws assets/profile/contributions*.svg from the live contribution calendar.
+on:
+  schedule:
+    - cron: "17 0 * * *" # daily, 07:17 in Vietnam
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: contributions
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v4
+        with:
+          path: scripts/.cache
+          key: profile-fonts-v1
+
+      - run: pip install fonttools==4.55.3
+
+      # The default token sees the same calendar as the public profile.
+      # Add a CONTRIBUTIONS_TOKEN secret only if that ever stops being enough.
+      - run: python scripts/build_profile.py --only contributions
+        env:
+          GITHUB_TOKEN: ${{ secrets.CONTRIBUTIONS_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # Committed as github-actions[bot], so the daily refresh never adds
+      # contributions of its own to the graph it draws.
+      - name: Commit if the calendar changed
+        run: |
+          if git diff --quiet -- assets/profile; then
+            echo "No change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/profile/contributions.svg assets/profile/contributions-narrow.svg
+          git commit -m "profile: refresh contributions"
+          git push
