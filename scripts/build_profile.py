@@ -6,17 +6,29 @@ text is converted to outlines here. The look follows the portfolio site:
 obsidian background, amber filaments, Archivo for display type and
 JetBrains Mono for labels (both fonts are OFL-licensed).
 
-    pip install fonttools
-    python scripts/build_profile.py
+Every board comes in a wide version and a narrow one for phones; the README
+picks between them with <picture>.
 
+    pip install fonttools
+    python scripts/build_profile.py                      # everything
+    python scripts/build_profile.py --only contributions # what the daily workflow runs
+
+The contribution calendar is read from the GitHub GraphQL API with the token
+in GITHUB_TOKEN / GH_TOKEN, or from `gh auth token` when neither is set.
 Fonts are downloaded once into scripts/.cache/ (git-ignored).
 """
 
 from __future__ import annotations
 
+import argparse
+import datetime as dt
+import json
 import math
+import os
 import random
+import subprocess
 import urllib.request
+from html import escape
 from pathlib import Path
 
 from fontTools.pens.svgPathPen import SVGPathPen
@@ -26,6 +38,7 @@ from fontTools.varLib import instancer
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "assets" / "profile"
 CACHE = Path(__file__).resolve().parent / ".cache"
+LOGIN = os.environ.get("PROFILE_LOGIN", "Hutt1212")
 
 FONT_URLS = {
     "Archivo.ttf": "https://github.com/google/fonts/raw/main/ofl/archivo/Archivo%5Bwdth%2Cwght%5D.ttf",
@@ -42,9 +55,15 @@ CREAM = "#F4F1EB"
 DIM = "#D9D0BF"
 MUTED = "#9A907E"
 
-W = 1200  # every artboard is 1200 units wide
-PAD = 72  # left/right text margin
-PLATE_H = 260
+WIDE, NARROW = 1200, 600
+
+# Same groups and wording as the portfolio site (lib/translations.ts).
+STACK = [
+    ("Core", ["C#", "ASP.NET Core", "TypeScript", "React", "Next.js", "Node.js", "NestJS"]),
+    ("AI & integration", ["SignalR", "Semantic Kernel", "RAG / Vector search", "Python", "LoRA / Fine-tuning"]),
+    ("Data", ["SQL Server", "PostgreSQL", "MongoDB", "Redis"]),
+    ("Ops & tooling", ["Docker", "CI/CD", "Nginx", "Tailwind CSS", "GSAP"]),
+]
 
 
 def fmt(v: float) -> str:
@@ -134,6 +153,9 @@ class Face:
             prev = glyph
         return placed, (x - tracking * self.upm if placed else 0.0)
 
+    def measure(self, text: str, size: float, tracking: float = 0.0) -> float:
+        return self.layout(text, tracking)[1] * size / self.upm
+
     def outline(self, glyph: str) -> str:
         pen = SVGPathPen(self.glyphs, ntos=fmt)
         self.glyphs[glyph].draw(pen)
@@ -144,11 +166,13 @@ class Face:
 # Artboard
 # --------------------------------------------------------------------------
 
-PULSE_CSS = (
+BASE_CSS = (
     f".p{{fill:none;stroke:{CORE};stroke-linecap:round;stroke-dasharray:24 976;"
     "animation:run linear infinite}"
     "@keyframes run{0%{stroke-dashoffset:1000;opacity:0}8%{opacity:1}92%{opacity:1}"
     "100%{stroke-dashoffset:0;opacity:0}}"
+    "@keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}"
+    "@keyframes fade{to{opacity:1}}"
     "@media (prefers-reduced-motion:reduce){.p{animation:none;opacity:0}}"
 )
 
@@ -156,9 +180,11 @@ PULSE_CSS = (
 class Board:
     """An SVG card: obsidian background, hairline border, outlined text."""
 
-    def __init__(self, height: int, label: str):
-        self.height = height
+    def __init__(self, width: int, height: float, label: str, css: str = ""):
+        self.width = width
+        self.height = round(height)
         self.label = label
+        self.css = css
         self.defs: list[str] = []
         self.body: list[str] = []
         self.glyphs: dict[str, str] = {}
@@ -171,12 +197,13 @@ class Board:
 
     def blur(self, fid: str, deviation: float) -> None:
         self.define(
-            f'<filter id="{fid}" filterUnits="userSpaceOnUse" x="0" y="0" width="{W}" height="{self.height}">'
+            f'<filter id="{fid}" filterUnits="userSpaceOnUse" x="0" y="0" '
+            f'width="{self.width}" height="{self.height}">'
             f'<feGaussianBlur stdDeviation="{deviation}"/></filter>'
         )
 
-    def text(self, face: Face, text, x, y, size, fill, tracking=0.0, anchor="start") -> None:
-        """Draw `text` as outlines with its baseline at (x, y); each glyph is defined once."""
+    def run(self, face: Face, text, x, y, size, fill, tracking=0.0, anchor="start") -> str:
+        """`text` as outlines with its baseline at (x, y); each glyph is defined once per board."""
         placed, width = face.layout(text, tracking)
         scale = size / face.upm
         if anchor == "middle":
@@ -190,21 +217,24 @@ class Board:
                 self.glyphs[gid] = face.outline(glyph)
             if self.glyphs[gid]:  # spaces have no outline
                 uses.append(f'<use href="#{gid}" x="{fmt(gx)}"/>' if gx else f'<use href="#{gid}"/>')
-        self.draw(
+        return (
             f'<g fill="{fill}" transform="translate({fmt(x)} {fmt(y)}) scale({scale:.5g} {-scale:.5g})">'
             f'{"".join(uses)}</g>'
         )
 
+    def text(self, *args, **kwargs) -> None:
+        self.draw(self.run(*args, **kwargs))
+
     def render(self) -> str:
-        h = self.height
+        w, h = self.width, self.height
         glyphs = "".join(f'<path id="{gid}" d="{d}"/>' for gid, d in self.glyphs.items() if d)
         return (
-            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {h}" role="img" aria-label="{self.label}">'
-            f"<style>{PULSE_CSS}</style>"
-            f'<defs><clipPath id="frame"><rect width="{W}" height="{h}" rx="18"/></clipPath>'
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" role="img" aria-label="{escape(self.label)}">'
+            f"<style>{BASE_CSS}{self.css}</style>"
+            f'<defs><clipPath id="frame"><rect width="{w}" height="{h}" rx="18"/></clipPath>'
             f'{"".join(self.defs)}{glyphs}</defs>'
-            f'<g clip-path="url(#frame)"><rect width="{W}" height="{h}" fill="{VOID}"/>{"".join(self.body)}</g>'
-            f'<rect x=".5" y=".5" width="{W - 1}" height="{h - 1}" rx="17.5" fill="none" '
+            f'<g clip-path="url(#frame)"><rect width="{w}" height="{h}" fill="{VOID}"/>{"".join(self.body)}</g>'
+            f'<rect x=".5" y=".5" width="{w - 1}" height="{h - 1}" rx="17.5" fill="none" '
             f'stroke="{AMBER}" stroke-opacity=".24"/>'
             "</svg>\n"
         )
@@ -235,11 +265,6 @@ def sample(fn, x0: int, x1: int, step: int):
     return [(x, fn(x)) for x in range(x0, x1 + 1, step)]
 
 
-def ease(t: float) -> float:
-    t = min(1.0, max(0.0, t))
-    return t * t * (3 - 2 * t)
-
-
 def strand(sid: str, d: str) -> str:
     # pathLength normalises dash patterns so every pulse travels its whole path
     return f'<path id="{sid}" pathLength="1000" d="{d}"/>'
@@ -253,10 +278,7 @@ def pulse(ref: str, duration: float, delay: float, width: float = 1.8) -> str:
 
 
 def cable(board: Board, prefix, rng, *, count, x0, x1, cy, amp, radius, pulses, step=40, spread=None) -> str:
-    """A braided bundle of strands — the same wave maths as the site's canvas scene.
-
-    Registers the strand paths on `board` and returns the drawing.
-    """
+    """A braided bundle of strands — the same wave maths as the site's canvas scene."""
     soft, lines, cores = [], [], []
     for i in range(count):
         offset = (rng.random() - 0.5) * 2 * radius
@@ -293,13 +315,21 @@ def cable(board: Board, prefix, rng, *, count, x0, x1, cy, amp, radius, pulses, 
 
 
 # --------------------------------------------------------------------------
-# Artboards
+# Hero — role and one-line introduction
 # --------------------------------------------------------------------------
 
 
-def hero(display: Face, body: Face, mono: Face) -> Board:
-    board = Board(500, "Nguyen Minh Huy — Fullstack Developer, Ho Chi Minh City")
-    cy = 402
+def hero(f, narrow: bool) -> Board:
+    display, body, mono = f
+    if narrow:
+        width, pad, height, cy = NARROW, 36, 420, 338
+        label, name, lines = (12.5, 62), (58, 132), (21, 180, 30)
+        copy = ["I build fullstack web systems", "with .NET and Next.js, and wire AI", "into products that are already running."]
+    else:
+        width, pad, height, cy = WIDE, 72, 500, 402
+        label, name, lines = (16, 104), (100, 208), (25, 268, 36)
+        copy = ["I build fullstack web systems with .NET and Next.js,", "and wire AI into products that are already running."]
+    board = Board(width, height, "Nguyen Minh Huy — Fullstack Developer, Ho Chi Minh City")
     board.blur("soft", 6)
     board.define(
         f'<radialGradient id="halo" cx="50%" cy="50%" r="50%">'
@@ -307,156 +337,309 @@ def hero(display: Face, body: Face, mono: Face) -> Board:
         f'<stop offset=".5" stop-color="{AMBER}" stop-opacity=".05"/>'
         f'<stop offset="1" stop-color="{AMBER}" stop-opacity="0"/></radialGradient>'
     )
-    board.draw(f'<ellipse cx="{W * 0.56:.0f}" cy="{cy}" rx="760" ry="230" fill="url(#halo)"/>')
+    board.draw(
+        f'<ellipse cx="{width * 0.56:.0f}" cy="{cy}" rx="{width * 0.63:.0f}" ry="{height * 0.46:.0f}" fill="url(#halo)"/>'
+    )
     board.draw(
         cable(
             board, "s", random.Random(1212),
-            count=42, x0=-20, x1=W + 20, cy=cy, amp=24, radius=27, pulses=7,
+            count=42 if not narrow else 30, x0=-20, x1=width + 20, cy=cy,
+            amp=24 if not narrow else 18, radius=27 if not narrow else 22, pulses=7 if not narrow else 5,
             spread=lambda t: 0.5 + 0.9 * t,
         )
     )
-    board.text(mono, "FULLSTACK DEVELOPER — HO CHI MINH CITY, VN", PAD, 104, 16, GLOW, tracking=0.18)
-    board.text(display, "Nguyen Minh Huy", PAD - 4, 208, 100, CREAM, tracking=-0.025)
-    board.text(body, "I build fullstack web systems with .NET and Next.js,", PAD, 268, 25, DIM)
-    board.text(body, "and wire AI into products that are already running.", PAD, 304, 25, DIM)
+    board.text(mono, "FULLSTACK DEVELOPER — HO CHI MINH CITY, VN", pad, label[1], label[0], GLOW, tracking=0.18)
+    board.text(display, "Nguyen Minh Huy", pad - name[0] * 0.04, name[1], name[0], CREAM, tracking=-0.025)
+    size, top, gap = lines
+    for i, line in enumerate(copy):
+        board.text(body, line, pad, top + i * gap, size, DIM)
     return board
 
 
-def plate(display, body, mono, *, label, title, summary, aria) -> Board:
-    """A project title card: label, title and summary on the left; the motif goes on the right."""
-    board = Board(PLATE_H, aria)
+# --------------------------------------------------------------------------
+# Tech stack — chips with a light running across them
+# --------------------------------------------------------------------------
+
+TECH_CSS = (
+    ".k{opacity:0;animation:in .7s cubic-bezier(.2,.7,.2,1) forwards}"
+    ".k rect{animation:ring 9s ease-in-out infinite}"
+    f"@keyframes ring{{0%,9%,100%{{stroke:{AMBER};stroke-opacity:.3;fill:#100A05}}"
+    f"4%{{stroke:{GOLD};stroke-opacity:1;fill:#2A1604}}}}"
+    "@media (prefers-reduced-motion:reduce){.k{animation:none;opacity:1}.k rect{animation:none}}"
+)
+
+
+def tech(f, narrow: bool) -> Board:
+    display, body, mono = f
+    if narrow:
+        width, pad, size, chip_h, head = NARROW, 32, 20, 44, 58
+    else:
+        width, pad, size, chip_h, head = WIDE, 72, 18, 40, 70
+    chip_x0 = pad if narrow else pad + 232
+    chip_x1 = width - pad
+    inset, gap = (18, 10) if narrow else (16, 9)
+
+    # Lay everything out first so the board height is known.
+    rows, y = [], head + 34
+    for gi, (group, items) in enumerate(STACK):
+        top = y
+        cy = y + (40 if narrow else 24)  # first chip row
+        x, chips = chip_x0, []
+        for item in items:
+            w = body.measure(item, size) + 2 * inset
+            if x + w > chip_x1 and x > chip_x0:
+                x, cy = chip_x0, cy + chip_h + gap
+            chips.append((item, x, cy, w))
+            x += w + gap
+        y = cy + chip_h + 24
+        rows.append((gi, group, top, chips))
+    height = y + (12 if narrow else 20)
+
+    board = Board(
+        width, height,
+        "Tech stack — " + "; ".join(f"{g}: {', '.join(items)}" for g, items in STACK),
+        TECH_CSS,
+    )
+    board.blur("soft", 4)
+    board.text(mono, "TECH STACK", pad, head, 14.5 if not narrow else 12.5, GLOW, tracking=0.18)
+    if not narrow:
+        board.text(mono, "WHAT I BUILD WITH, DAY TO DAY", width - pad, head, 13, MUTED, tracking=0.16, anchor="end")
+
+    n = 0
+    for gi, group, top, chips in rows:
+        rid = f"r{gi}"
+        board.define(strand(rid, f"M{pad} {top}H{width - pad}"))
+        board.draw(
+            f'<use href="#{rid}" fill="none" stroke="{AMBER}" stroke-opacity=".16"/>'
+            + pulse(rid, 9 + gi * 1.3, gi * 2.1, 1.6)
+        )
+        label_y = top + 28 if narrow else chips[0][2] + chip_h / 2 + 5
+        board.text(mono, f"0{gi + 1}", pad, label_y, 13, MUTED, tracking=0.12)
+        board.text(mono, group.upper(), pad + 34, label_y, 13 if not narrow else 12.5, GLOW, tracking=0.16)
+        for item, x, cy, w in chips:
+            board.draw(
+                f'<g class="k" style="animation-delay:{0.15 + n * 0.05:.2f}s">'
+                f'<rect x="{fmt(x)}" y="{fmt(cy)}" width="{fmt(w)}" height="{chip_h}" rx="{chip_h / 2:g}" '
+                f'fill="#100A05" stroke="{AMBER}" stroke-opacity=".3" style="animation-delay:{1.2 + n * 0.32:.2f}s"/>'
+                + board.run(body, item, x + inset, cy + chip_h / 2 + size * 0.36, size, DIM)
+                + "</g>"
+            )
+            n += 1
+    return board
+
+
+# --------------------------------------------------------------------------
+# Contributions — calendar, weekly filament and a light sweeping the grid
+# --------------------------------------------------------------------------
+
+LEVELS = {"NONE": 0, "FIRST_QUARTILE": 1, "SECOND_QUARTILE": 2, "THIRD_QUARTILE": 3, "FOURTH_QUARTILE": 4}
+
+
+def fetch_calendar(login: str) -> dict:
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not token:
+        token = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=True).stdout.strip()
+    query = (
+        "query($login:String!){user(login:$login){contributionsCollection{contributionCalendar{"
+        "totalContributions weeks{contributionDays{date contributionCount contributionLevel}}}}}}"
+    )
+    request = urllib.request.Request(
+        "https://api.github.com/graphql",
+        data=json.dumps({"query": query, "variables": {"login": login}}).encode(),
+        headers={"Authorization": f"bearer {token}", "Content-Type": "application/json", "User-Agent": "profile-build"},
+    )
+    with urllib.request.urlopen(request) as response:
+        payload = json.load(response)
+    if "errors" in payload:
+        raise RuntimeError(payload["errors"])
+    return payload["data"]["user"]["contributionsCollection"]["contributionCalendar"]
+
+
+def stats(calendar: dict) -> dict:
+    days = [d for w in calendar["weeks"] for d in w["contributionDays"]]
+    longest = current = 0
+    for d in days:
+        current = current + 1 if d["contributionCount"] else 0
+        longest = max(longest, current)
+    return {
+        "total": calendar["totalContributions"],
+        "active": sum(1 for d in days if d["contributionCount"]),
+        "longest": longest,
+        "best": max(d["contributionCount"] for d in days),
+    }
+
+
+def contributions_css(sweep: float) -> str:
+    return (
+        ".col{opacity:0;animation:in .5s ease-out forwards}"
+        ".l0{fill:#17110B}.l1{fill:#4A2806}.l2{fill:#8F4C05}.l3{fill:#E58200}.l4{fill:#FFC64A}"
+        ".draw{stroke-dasharray:1000;stroke-dashoffset:1000;animation:draw 2.6s cubic-bezier(.3,.6,.2,1) .3s forwards}"
+        ".area{opacity:0;animation:fade 1.4s ease-out 1.6s forwards}"
+        ".sw{animation:sweep 6.5s cubic-bezier(.45,0,.55,1) 1.8s infinite}"
+        ".hot{animation:tw 2.8s ease-in-out infinite}"
+        "@keyframes draw{to{stroke-dashoffset:0}}"
+        f"@keyframes sweep{{0%{{transform:translateX(0)}}70%,100%{{transform:translateX({sweep:.0f}px)}}}}"
+        "@keyframes tw{0%,100%{opacity:.35}50%{opacity:1}}"
+        "@media (prefers-reduced-motion:reduce){.col,.area{animation:none;opacity:1}"
+        ".draw{animation:none;stroke-dashoffset:0}.sw{animation:none;opacity:0}.hot{animation:none}}"
+    )
+
+
+def contributions(f, calendar: dict, narrow: bool) -> Board:
+    display, body, mono = f
+    s = stats(calendar)
+    figures = [
+        (f"{s['total']:,}", "CONTRIBUTIONS"),
+        (f"{s['active']}", "ACTIVE DAYS"),
+        (f"{s['longest']}", "LONGEST STREAK, DAYS"),
+        (f"{s['best']}", "BEST DAY"),
+    ]
+    if narrow:
+        weeks = calendar["weeks"][-26:]
+        width, pad = NARROW, 32
+        head, chart_top, chart_h = 58, 236, 64
+        slots = [(pad + (i % 2) * 270, 120 + (i // 2) * 74) for i in range(4)]
+        value_size, caption_size = 36, 11
+    else:
+        weeks = calendar["weeks"]
+        width, pad = WIDE, 72
+        head, chart_top, chart_h = 70, 196, 76
+        slots = [(pad + i * 262, 138) for i in range(4)]
+        value_size, caption_size = 48, 12
+
+    pitch = (width - 2 * pad + 4) / len(weeks)
+    cell = pitch - 4
+    grid_top = chart_top + chart_h + 26
+    grid_bottom = grid_top + 7 * pitch - 4
+    height = grid_bottom + 58
+    sweep_w = 260 if not narrow else 160
+    board = Board(
+        width, height,
+        f"GitHub contributions for @{LOGIN}: {s['total']:,} in the last year, {s['active']} active days, "
+        f"longest streak {s['longest']} days, best day {s['best']}",
+        contributions_css(width - 2 * pad + 2 * sweep_w),
+    )
     board.blur("soft", 5)
-    board.text(mono, label, PAD, 70, 14.5, GLOW, tracking=0.18)
-    board.text(display, title, PAD - 3, 148, 66, CREAM, tracking=-0.025)
-    for i, line in enumerate(summary):
-        board.text(body, line, PAD, 192 + i * 32, 23, DIM)
-    return board
+    board.blur("halo", 3)
 
+    # Header and figures
+    title = "CONTRIBUTIONS — LAST 12 MONTHS" if not narrow else "CONTRIBUTIONS · 12 MONTHS"
+    board.text(mono, title, pad, head, 14.5 if not narrow else 12.5, GLOW, tracking=0.18)
+    more = mono.measure("MORE", 11, 0.12)
+    sx = width - pad - more - 10 - (5 * 18 - 5)
+    board.draw("".join(
+        f'<rect x="{fmt(sx + i * 18)}" y="{fmt(head - 11)}" width="13" height="13" rx="2.5" class="l{i}"/>'
+        for i in range(5)
+    ))
+    board.text(mono, "LESS", sx - 10, head, 11, MUTED, tracking=0.12, anchor="end")
+    board.text(mono, "MORE", width - pad, head, 11, MUTED, tracking=0.12, anchor="end")
+    for i, ((value, caption), (x, y)) in enumerate(zip(figures, slots)):
+        board.draw(
+            f'<g class="col" style="animation-delay:{0.1 + i * 0.12:.2f}s">'
+            + board.run(display, value, x - value_size * 0.03, y, value_size, CREAM, tracking=-0.02)
+            + board.run(mono, caption, x, y + 26, caption_size, MUTED, tracking=0.16)
+            + "</g>"
+        )
 
-def tag(board: Board, mono: Face, text: str, x: float, y: float, fill: str = MUTED, anchor: str = "start"):
-    board.text(mono, text, x, y, 13, fill, tracking=0.16, anchor=anchor)
-
-
-def unagi(display, body, mono) -> Board:
-    """Two responders — assistant and staff — twisting into one connection."""
-    board = plate(
-        display, body, mono,
-        label="01 — CLIENT WORK · UNAGI.VN",
-        title="UNAGI",
-        summary=["Real-time chat & RAG assistant", "for a Japanese food site"],
-        aria="UNAGI — real-time chat and RAG assistant for a Japanese food site",
-    )
-    cy, x0, x1 = 128, 676, W + 20
-    period, far, near = 132, 46, 13
-
-    def path(sign):
-        def y(x):
-            u = x - x0
-            reach = near + (far - near) * math.exp(-u / 90)  # settle towards the shared axis
-            angle = 2 * math.pi * (u * u / (u + 80)) / period  # twist starts slowly, then runs steady
-            return cy + sign * reach * math.cos(angle)
-
-        return smooth(sample(y, x0, x1, 6))
-
-    board.define(strand("ua", path(-1)))
-    board.define(strand("ub", path(1)))
-    board.draw(
-        f'<g fill="none" stroke-linecap="round">'
-        f'<g stroke="{GOLD}" stroke-width="6" stroke-opacity=".35" filter="url(#soft)"><use href="#ua"/></g>'
-        f'<use href="#ua" stroke="{AMBER}" stroke-width="2"/>'
-        f'<use href="#ub" stroke="{DIM}" stroke-width="2" stroke-opacity=".85"/>'
-        + pulse("ua", 6.5, 1.5, 2.6)
-        + pulse("ub", 8.0, 5.0, 2.6)
-        + "</g>"
-        f'<circle cx="{x0}" cy="{cy - far}" r="4.5" fill="{AMBER}"/>'
-        f'<circle cx="{x0}" cy="{cy + far}" r="4.5" fill="{DIM}"/>'
-    )
-    tag(board, mono, "ASSISTANT", x0 + 16, cy - far - 14, GLOW)
-    tag(board, mono, "STAFF", x0 + 16, cy + far + 24, DIM)
-    tag(board, mono, "ONE SIGNALR CONNECTION", W - PAD, cy + 82, anchor="end")
-    return board
-
-
-def bddwriter(display, body, mono) -> Board:
-    """One user story becomes many scenarios, which become test code."""
-    board = plate(
-        display, body, mono,
-        label="02 — FINAL-YEAR THESIS · 2025",
-        title="BDDWriter",
-        summary=["Gherkin scenarios and Cypress code", "from self-hosted LLMs"],
-        aria="BDDWriter — Gherkin scenarios and Cypress code from self-hosted LLMs",
-    )
-    cy, xa, xb, xc, x1 = 128, 676, 872, 1068, W + 20
-    fan = 7
-    board.define(strand("b0", f"M{xa} {cy}H{xb}"))
-    uses = []
-    for i in range(fan):
-        target = cy + (i - (fan - 1) / 2) * 15
-
-        def y(x, target=target):
-            return cy + (target - cy) * ease((x - xb) / (xc - xb))
-
-        board.define(strand(f"b{i + 1}", smooth(sample(y, xb, x1, 14))))
-        uses.append(f'<use href="#b{i + 1}" stroke-opacity="{0.9 if i == fan // 2 else 0.55}"/>')
-    node = f'fill="{VOID}" stroke="{GLOW}" stroke-width="2"'
-    board.draw(
-        f'<g fill="none" stroke-linecap="round">'
-        f'<g stroke="{GOLD}" stroke-width="6" stroke-opacity=".35" filter="url(#soft)"><use href="#b0"/></g>'
-        f'<g stroke="{AMBER}" stroke-width="1.6"><use href="#b0" stroke-width="2"/>{"".join(uses)}</g>'
-        + pulse("b0", 4.2, 1.0, 2.6)
-        + pulse("b1", 7.5, 2.0, 2.2)
-        + pulse("b4", 6.0, 4.4, 2.2)
-        + pulse("b6", 8.5, 0.6, 2.2)
-        + "</g>"
-        f'<circle cx="{xa}" cy="{cy}" r="6" {node}/><circle cx="{xb}" cy="{cy}" r="6" {node}/>'
-    )
-    tag(board, mono, "USER STORY", xa - 6, cy - 70, GLOW)
-    tag(board, mono, "GHERKIN", xb - 6, cy - 70, GLOW)
-    tag(board, mono, "CYPRESS", xc - 6, cy - 70, GLOW)
-    tag(board, mono, "1 STORY → MANY SCENARIOS → RUNNABLE TESTS", W - PAD, cy + 82, anchor="end")
-    return board
-
-
-def portfolio(display, body, mono) -> Board:
-    """The site's own scene: a braided cable of light."""
-    board = plate(
-        display, body, mono,
-        label="03 — PERSONAL · OPEN SOURCE",
-        title="Portfolio",
-        summary=["Personal site built around", "a canvas-rendered scene"],
-        aria="Portfolio — personal site built with Next.js and GSAP",
-    )
-    cy = 128
+    # Weekly totals as a filament that draws itself in, then carries a pulse
+    totals = [sum(d["contributionCount"] for d in w["contributionDays"]) for w in weeks]
+    peak = max(totals) or 1
+    xs = [pad + j * pitch + cell / 2 for j in range(len(weeks))]
+    base = chart_top + chart_h
+    points = [(x, base - (t / peak) ** 0.75 * chart_h) for x, t in zip(xs, totals)]
+    line = smooth(points)
+    board.define(strand("wk", line))
     board.define(
-        '<linearGradient id="reveal" gradientUnits="userSpaceOnUse" x1="610" x2="820" y1="0" y2="0">'
-        '<stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff"/></linearGradient>'
-        f'<mask id="emerge" maskUnits="userSpaceOnUse" x="600" y="0" width="640" height="{PLATE_H}">'
-        f'<rect x="600" width="640" height="{PLATE_H}" fill="url(#reveal)"/></mask>'
+        '<linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">'
+        f'<stop offset="0" stop-color="{AMBER}" stop-opacity=".28"/>'
+        f'<stop offset="1" stop-color="{AMBER}" stop-opacity="0"/></linearGradient>'
+        '<linearGradient id="band" x1="0" y1="0" x2="1" y2="0">'
+        f'<stop offset="0" stop-color="{CORE}" stop-opacity="0"/>'
+        f'<stop offset=".5" stop-color="{CORE}" stop-opacity=".9"/>'
+        f'<stop offset="1" stop-color="{CORE}" stop-opacity="0"/></linearGradient>'
     )
-    lines = cable(
-        board, "f", random.Random(28),
-        count=26, x0=610, x1=W + 20, cy=cy, amp=9, radius=30, pulses=5, step=30,
+    board.draw(
+        f'<path class="area" fill="url(#fill)" d="{line}L{fmt(xs[-1])} {fmt(base)}L{fmt(xs[0])} {fmt(base)}Z"/>'
+        f'<g fill="none" stroke-linecap="round">'
+        f'<use href="#wk" class="draw" stroke="{GOLD}" stroke-width="6" stroke-opacity=".45" filter="url(#soft)"/>'
+        f'<use href="#wk" class="draw" stroke="{GLOW}" stroke-width="2"/>'
+        + pulse("wk", 6.5, 0, 2.8)
+        + pulse("wk", 6.5, 3.25, 2.8)
+        + "</g>"
     )
-    board.draw(f'<g mask="url(#emerge)">{lines}</g>')
-    tag(board, mono, "CANVAS 2D · GSAP SCROLLTRIGGER · LENIS", W - PAD, cy + 82, anchor="end")
+    best_week = max(range(len(totals)), key=totals.__getitem__)
+    bx, by = points[best_week]
+    board.draw(
+        f'<g class="area"><circle cx="{fmt(bx)}" cy="{fmt(by)}" r="9" fill="{GOLD}" fill-opacity=".25" class="hot"/>'
+        f'<circle cx="{fmt(bx)}" cy="{fmt(by)}" r="3.5" fill="{CORE}"/></g>'
+    )
+
+    # Calendar grid: columns fade in left to right; active days catch a sweeping light
+    columns, active, hot = [], [], []
+    for j, week in enumerate(weeks):
+        cells = []
+        for day in week["contributionDays"]:
+            date = dt.date.fromisoformat(day["date"])
+            row = (date.weekday() + 1) % 7  # Sunday first, like GitHub
+            x, y = pad + j * pitch, grid_top + row * pitch
+            rect = f'x="{fmt(x)}" y="{fmt(y)}" width="{fmt(cell)}" height="{fmt(cell)}" rx="3"'
+            level = LEVELS[day["contributionLevel"]]
+            cells.append(f'<rect {rect} class="l{level}"/>')
+            if level:
+                active.append(f"<rect {rect}/>")
+            if level == 4:
+                hot.append(f'<rect {rect} style="animation-delay:-{(j * 0.37) % 2.8:.2f}s"/>')
+        columns.append(f'<g class="col" style="animation-delay:{0.5 + j * 0.024:.3f}s">{"".join(cells)}</g>')
+    board.define(f'<mask id="lit" maskUnits="userSpaceOnUse" x="0" y="0" width="{width}" height="{board.height}">'
+                 f'<g fill="#fff">{"".join(active)}</g></mask>')
+    board.draw(f'<g class="hot" fill="{GOLD}" fill-opacity=".55" filter="url(#halo)">{"".join(hot)}</g>')
+    board.draw("".join(columns))
+    board.draw(
+        f'<g mask="url(#lit)"><rect class="sw" x="{fmt(pad - sweep_w)}" y="{fmt(grid_top)}" '
+        f'width="{sweep_w}" height="{fmt(grid_bottom - grid_top)}" fill="url(#band)"/></g>'
+    )
+
+    # Month labels under the first column of each month
+    last = -9
+    for j, week in enumerate(weeks):
+        first = dt.date.fromisoformat(week["contributionDays"][0]["date"])
+        prev = dt.date.fromisoformat(weeks[j - 1]["contributionDays"][0]["date"]) if j else None
+        if (prev is None or prev.month != first.month) and j - last >= 3 and j <= len(weeks) - 2:
+            label = (first if prev is None else first.replace(day=1) if first.day <= 7 else first).strftime("%b")
+            board.text(mono, label.upper(), pad + j * pitch, grid_bottom + 26, 11.5, MUTED, tracking=0.12)
+            last = j
+
     return board
+
+
+# --------------------------------------------------------------------------
 
 
 def main() -> None:
-    display = Face("d", "Archivo.ttf", wght=700, wdth=110)
-    body = Face("b", "Archivo.ttf", wght=400, wdth=100)
-    mono = Face("m", "JetBrainsMono.ttf", wght=500)
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--only", choices=["all", "contributions"], default="all")
+    args = parser.parse_args()
+
+    faces = (
+        Face("d", "Archivo.ttf", wght=700, wdth=110),
+        Face("b", "Archivo.ttf", wght=400, wdth=100),
+        Face("m", "JetBrainsMono.ttf", wght=500),
+    )
+    calendar = fetch_calendar(LOGIN)
+    boards = {"contributions": lambda narrow: contributions(faces, calendar, narrow)}
+    if args.only == "all":
+        boards = {
+            "hero": lambda narrow: hero(faces, narrow),
+            "tech": lambda narrow: tech(faces, narrow),
+            **boards,
+        }
     OUT.mkdir(parents=True, exist_ok=True)
-    boards = {
-        "hero.svg": hero,
-        "work-unagi.svg": unagi,
-        "work-bddwriter.svg": bddwriter,
-        "work-portfolio.svg": portfolio,
-    }
     for name, build in boards.items():
-        svg = build(display, body, mono).render()
-        (OUT / name).write_text(svg, encoding="utf-8", newline="\n")
-        print(f"{name:22} {len(svg) / 1024:6.1f} KB")
+        for narrow in (False, True):
+            file = f"{name}-narrow.svg" if narrow else f"{name}.svg"
+            svg = build(narrow).render()
+            (OUT / file).write_text(svg, encoding="utf-8", newline="\n")
+            print(f"{file:26} {len(svg) / 1024:6.1f} KB")
 
 
 if __name__ == "__main__":
